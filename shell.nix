@@ -1,15 +1,40 @@
-{ pkgs ? (import <nixpkgs> {}).pkgs }:
-with pkgs;
-mkShell {
+with import <nixpkgs> {};
+(
+
+let python =
+    let
+    packageOverrides = self:
+    super: {
+      opencv4 = super.opencv4.override {
+        enableGtk2 = true;
+        gtk2 = pkgs.gtk2;
+        enableFfmpeg = true; #here is how to add ffmpeg and other compilation flags
+        };
+    };
+    in
+      pkgs.python38.override {inherit packageOverrides; self = python;};
+
+in
+
+stdenv.mkDerivation {
+  name = "impurePythonEnv";
   buildInputs = [
-    python3Packages.virtualenv # run virtualenv .
-    python3Packages.pyqt5 # avoid installing via pip
-    python3Packages.pyusb # fixes the pyusb 'No backend available' when installed directly via pip
+    imagemagick
+    v4l-utils
+    (python38.buildEnv.override {
+      extraLibs = [
+	pkgs.python38Packages.matplotlib
+	pkgs.python38Packages.numpy
+	pkgs.python38Packages.scipy
+	pkgs.python38Packages.gnureadline        
+        python.pkgs.opencv4
+      ];
+      ignoreCollisions = true;
+    })
   ];
   shellHook = ''
-    # fixes libstdc++ issues and libgl.so issues
-    LD_LIBRARY_PATH=${stdenv.cc.cc.lib}/lib/:/run/opengl-driver/lib/
-    # fixes xcb issues :
-    QT_PLUGIN_PATH=${qt5.qtbase}/${qt5.qtbase.qtPluginPrefix}
+        # set SOURCE_DATE_EPOCH so that we can use python wheels
+        SOURCE_DATE_EPOCH=$(date +%s)
+        export LANG=en_US.UTF-8	
   '';
-}
+})

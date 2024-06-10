@@ -9,6 +9,11 @@
       forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
         pkgs = import nixpkgs { inherit system; };
       });
+      /* opencvGtk = opencv.override (old: {
+        # enableGStreamer = true;
+        enableGtk2 = true;
+        # enableGTK3 = true;
+      }); */
     in
     {
       devShells = forEachSupportedSystem ({ pkgs }: {
@@ -17,18 +22,19 @@
           packages = with pkgs; [ python311 ] ++
             (with pkgs.python311Packages; [ 
               pip
-              gtk2
-              pkg-config
-              opencv4
-              numpy
-              venvShellHook 
-              gst_all_1.gstreamer
-              gst_all_1.gst-plugins-base
-              gst_all_1.gst-plugins-good
-              gst_all_1.gst-plugins-bad
-              gst_all_1.gst-plugins-ugly
+              (opencv4.override {enableGtk3 = true;})
+              requests
+              pillow
+              zlib
+              libGL
+              glib
             ]);
         };
+        # add path
+        shellHook = ''
+          export LD_LIBRARY_PATH="${pkgs.zlib}/lib:${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.libGL}/lib:${pkgs.glib.out}/lib:/run/opengl-driver/lib"
+        '';
       });
     };
 }
+  # LD_LIBRARY_PATH = "${pin.pkgs.zlib}/lib:${pin.pkgs.stdenv.cc.cc.lib}/lib:${pin.pkgs.libGL}/lib:${pin.pkgs.glib.out}/lib:/run/opengl-driver/lib";
