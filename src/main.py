@@ -15,7 +15,6 @@ def capture_image(url):
     response = requests.get(url)
     img = Image.open(BytesIO(response.content))
     img = np.array(img)
-    # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     return img
 
 # Load the ranks and suits
@@ -50,15 +49,13 @@ while True:
             if (cnt_is_card[i] == 1):
                 # preprocess card
                 cards_list.append(cards.preprocess_card(cnts_sort[i], image))
-                print("Card detected")
 
                 # find best rank and suit matches
-                # cards_list[k].best_rank_match, cards_list[k].best_suit_match, cards_list[k].rank_diff, cards_list[k].suit_diff = cards.match_card(cards_list[k], train_ranks, train_suits)
+                cards_list[k].best_rank_match, cards_list[k].best_suit_match, cards_list[k].rank_diff, cards_list[k].suit_diff = cards.match_card(cards_list[k], train_ranks, train_suits)
 
                 # draw center point and match result on the card
                 image = cards.draw_results(image, cards_list[k])
                 k += 1
-                print("Card: ", k)
 
         # Draw card contours on the image
         if (len(cards_list) != 0):
