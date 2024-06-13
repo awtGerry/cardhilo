@@ -3,7 +3,7 @@ import numpy as np
 
 # Adaptive threshold levels
 BKG_THRESH = 60
-CARD_THRESH = 30
+CARD_THRESH = 80
 
 # Width and height of card corner, where rank and suit are
 CORNER_WIDTH = 64
@@ -17,8 +17,8 @@ RANK_HEIGHT = 125
 SUIT_WIDTH = 70
 SUIT_HEIGHT = 100
 
-RANK_DIFF_MAX = 2000
-SUIT_DIFF_MAX = 700
+RANK_DIFF_MAX = 4000
+SUIT_DIFF_MAX = 2000
 
 CARD_MAX_AREA = 120000
 CARD_MIN_AREA = 25000
@@ -83,11 +83,8 @@ def preprocess_image(image):
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     img_w, img_h = np.shape(image)[:2]
     bkg_level = blur[int(img_h / 100)][int(img_w / 2)]
-    thresh_level = bkg_level + BKG_THRESH
+    thresh_level = bkg_level + BKG_THRESH # Threshold level to binary threshold the image
     retval, thresh = cv2.threshold(blur, thresh_level, 255, cv2.THRESH_BINARY)
-
-    # DEBUG:
-    # cv2.imshow("Preprocess", thresh)
 
     return thresh
 
@@ -140,10 +137,7 @@ def preprocess_card(contour, image):
     qCard.warp = flattener(image, pts, w, h)
 
     Qcorner = qCard.warp[0:CORNER_HEIGHT, 0:CORNER_WIDTH]
-    Qcorner_zoom = cv2.resize(Qcorner, (0, 0), fx=2.5, fy=2.5)
-
-    # DEBUG:
-    # cv2.imshow("Corner", Qcorner_zoom)
+    Qcorner_zoom = cv2.resize(Qcorner, (0, 0), fx=4, fy=4)
 
     # Sample known white pixel intensity to determine good threshold level
     white_level = Qcorner_zoom[15,int((CORNER_WIDTH*4)/2)]
@@ -156,13 +150,14 @@ def preprocess_card(contour, image):
 
     gray_corner = cv2.cvtColor(Qcorner_zoom, cv2.COLOR_BGR2GRAY)
     blur_corner = cv2.GaussianBlur(gray_corner, (5, 5), 0)
-    # hist = cv2.equalizeHist(blur_corner)
     retval, thresh_corner = cv2.threshold(blur_corner, thresh_level, 255, cv2.THRESH_BINARY)
 
     Qrank_roi = thresh_corner[20:340, 20:220]
     Qsuit_roi = thresh_corner[350:640, 20:280]
     Qrank_cnts, hier = cv2.findContours(Qrank_roi, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     Qrank_cnts = sorted(Qrank_cnts, key=cv2.contourArea, reverse=True)
+
+    cv2.imshow("Rank", Qrank_roi)
 
     if len(Qrank_cnts) != 0:
         x,y,w,h = cv2.boundingRect(Qrank_cnts[0])
@@ -177,6 +172,9 @@ def preprocess_card(contour, image):
         Qsuit = Qsuit_roi[y:y + h, x:x + w]
         qCard.suit_img = cv2.resize(Qsuit, (SUIT_WIDTH, SUIT_HEIGHT), 0, 0)
 
+    # DEBUG:
+    # cv2.imshow("Suit", Qsuit)
+
     return qCard
 
 # Function to call the match_card function for each card in the image
@@ -186,15 +184,19 @@ def match_card(qCard, train_ranks, train_suits):
     best_rank_match_name = "Unknown"
     best_suit_match_name = "Unknown"
 
+    # Invert colors (white card, black symbols)
+    qCard.rank_img = cv2.bitwise_not(qCard.rank_img)
+    qCard.suit_img = cv2.bitwise_not(qCard.suit_img)
+
     if (len(qCard.rank_img) != 0) and (len(qCard.suit_img) != 0):
         for Trank in train_ranks:
             diff_img = cv2.absdiff(qCard.rank_img, Trank.img)
             rank_diff = int(np.sum(diff_img) / 255)
-            # DEBUG:
             print("Rank match: ", Trank.name, "diff: ", rank_diff)
             if rank_diff < best_rank_match_diff:
                 best_rank_match_diff = rank_diff
                 best_rank_name = Trank.name
+                print("****Best rank match: ", best_rank_name)
 
         for Tsuit in train_suits:
             diff_img = cv2.absdiff(qCard.suit_img, Tsuit.img)
