@@ -53,6 +53,8 @@ class Train_suits:
 def load_ranks(filepath):
     train_ranks = []
     i = 0
+    # Change Rank Ace, Two... To Ace1, Ace2, Ace3, Two1, Two2, Two3...
+    # for Rank in ["Ace1", "Ace2", "Ace3", "Two1", "Two2", "Two3", "Three1", "Three2", "Three3", "Four1", "Four2", "Four3", "Five1", "Five2", "Five3", "Six1", "Six2", "Six3", "Seven1", "Seven2", "Seven3", "Eight1", "Eight2", "Eight3", "Nine1", "Nine2", "Nine3", "Ten1", "Ten2", "Ten3", "Jack1", "Jack2", "Jack3", "Queen1", "Queen2", "Queen3", "King1", "King2", "King3"]:
     for Rank in ["Ace", "Two", "Three", "Four", "Five", "Six", "Seven",
               "Eight", "Nine", "Ten", "Jack", "Queen", "King"]:
         train_ranks.append(Train_ranks())
@@ -152,7 +154,7 @@ def preprocess_card(contour, image):
     # remove noise
     blur_corner = cv2.GaussianBlur(gray_corner, (5, 5), 0)
     # apply binary threshold
-    retval, thresh_corner = cv2.threshold(blur_corner, thresh_level, 255, cv2.THRESH_BINARY)
+    retval, thresh_corner = cv2.threshold(blur_corner, 155, 255, cv2.THRESH_BINARY)
 
     Qrank_roi = thresh_corner[20:215, 0:130] # [y1:y2, x1:x2]
     Qsuit_roi = thresh_corner[225:460, 0:142]
@@ -190,7 +192,8 @@ def match_card(qCard, train_ranks, train_suits):
     qCard.suit_img = cv2.bitwise_not(qCard.suit_img)
 
     if (len(qCard.rank_img) != 0) and (len(qCard.suit_img) != 0):
-        cv2.imshow("train", train_ranks[1].img)
+        # Test 6 in train_ranks
+        cv2.imshow("IMG", train_ranks[5].img)
         for Trank in train_ranks:
             diff_img = cv2.absdiff(qCard.rank_img, Trank.img)
             rank_diff = int(np.sum(diff_img) / 255)
