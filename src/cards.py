@@ -6,8 +6,8 @@ BKG_THRESH = 60
 CARD_THRESH = 30
 
 # Width and height of card corner, where rank and suit are
-CORNER_WIDTH = 32
-CORNER_HEIGHT = 84
+CORNER_WIDTH = 64
+CORNER_HEIGHT = 160
 
 # Dimensions of rank train images
 RANK_WIDTH = 70
@@ -17,8 +17,8 @@ RANK_HEIGHT = 125
 SUIT_WIDTH = 70
 SUIT_HEIGHT = 100
 
-RANK_DIFF_MAX = 2000
-SUIT_DIFF_MAX = 700
+RANK_DIFF_MAX = 4000
+SUIT_DIFF_MAX = 2000
 
 CARD_MAX_AREA = 120000
 CARD_MIN_AREA = 25000
@@ -61,7 +61,6 @@ def load_ranks(filepath):
         train_ranks[i].img = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
         i += 1
 
-    print("Ranks loaded")
     return train_ranks
 
 def load_suits(filepath):
@@ -77,19 +76,22 @@ def load_suits(filepath):
     print("Suits loaded")
     return train_suits
 
+# Function to preprocess image
 def preprocess_image(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     img_w, img_h = np.shape(image)[:2]
     bkg_level = blur[int(img_h / 100)][int(img_w / 2)]
-    thresh_level = bkg_level + BKG_THRESH
+    thresh_level = bkg_level + BKG_THRESH # Threshold level to binary threshold the image
     retval, thresh = cv2.threshold(blur, thresh_level, 255, cv2.THRESH_BINARY)
 
     return thresh
 
+# Function to find contours and sort them by area
 def find_cards(thresh_image):
     cnts, hier = cv2.findContours(thresh_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     index_sort = sorted(range(len(cnts)), key=lambda i: cv2.contourArea(cnts[i]), reverse=True)
+
     if len(cnts) == 0:
         return [], []
 
@@ -106,8 +108,7 @@ def find_cards(thresh_image):
         peri = cv2.arcLength(cnts_sort[i], True)
         approx = cv2.approxPolyDP(cnts_sort[i], 0.01 * peri, True)
 
-        if ((size < CARD_MAX_AREA) and (size > CARD_MIN_AREA)
-            and (hier_sort[i][3] == -1) and (len(approx) == 4)):
+        if ((size < CARD_MAX_AREA) and (size > CARD_MIN_AREA) and (hier_sort[i][3] == -1) and (len(approx) == 4)):
             cnt_is_card[i] = 1
 
     return cnts_sort, cnt_is_card
@@ -138,14 +139,29 @@ def preprocess_card(contour, image):
     Qcorner = qCard.warp[0:CORNER_HEIGHT, 0:CORNER_WIDTH]
     Qcorner_zoom = cv2.resize(Qcorner, (0, 0), fx=2.5, fy=2.5)
 
-    gray_corner = cv2.cvtColor(Qcorner_zoom, cv2.COLOR_BGR2GRAY)
-    blur_corner = cv2.GaussianBlur(gray_corner, (5, 5), 0)
-    retval, thresh_corner = cv2.threshold(blur_corner, CARD_THRESH, 255, cv2.THRESH_BINARY)
+    white_level = Qcorner_zoom[15,int((CORNER_WIDTH*4)/2)]
+    # white_level = Qcorner_zoom[15, 15]
+    thresh_level = white_level - CARD_THRESH
+    if isinstance(thresh_level, np.ndarray):
+        thresh_level = thresh_level[0]
+    if thresh_level <= 0:
+        thresh_level = 1
 
-    Qrank_roi = thresh_corner[20:185, 0:64]
-    Qsuit_roi = thresh_corner[186:336, 0:64]
+    # Convert to grayscale
+    gray_corner = cv2.cvtColor(Qcorner_zoom, cv2.COLOR_BGR2GRAY)
+    # remove noise
+    blur_corner = cv2.GaussianBlur(gray_corner, (5, 5), 0)
+    # apply binary threshold
+    retval, thresh_corner = cv2.threshold(blur_corner, thresh_level, 255, cv2.THRESH_BINARY)
+
+    Qrank_roi = thresh_corner[20:215, 0:130] # [y1:y2, x1:x2]
+    Qsuit_roi = thresh_corner[225:460, 0:142]
     Qrank_cnts, hier = cv2.findContours(Qrank_roi, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     Qrank_cnts = sorted(Qrank_cnts, key=cv2.contourArea, reverse=True)
+
+    # DEBUG:
+    # cv2.imshow("Rank", Qrank_roi)
+    # cv2.imshow("Suit", Qsuit_roi)
 
     if len(Qrank_cnts) != 0:
         x, y, w, h = cv2.boundingRect(Qrank_cnts[0])
@@ -161,89 +177,50 @@ def preprocess_card(contour, image):
 
     return qCard
 
+# Function to call the match_card function for each card in the image
 def match_card(qCard, train_ranks, train_suits):
     best_rank_match_diff = 10000
     best_suit_match_diff = 10000
     best_rank_match_name = "Unknown"
     best_suit_match_name = "Unknown"
 
-    if len(qCard.rank_img) != 0:
+    # Invert colors (white card, black symbols)
+    qCard.rank_img = cv2.bitwise_not(qCard.rank_img)
+    cv2.imshow("Rank", qCard.rank_img)
+    qCard.suit_img = cv2.bitwise_not(qCard.suit_img)
+
+    if (len(qCard.rank_img) != 0) and (len(qCard.suit_img) != 0):
+        cv2.imshow("train", train_ranks[1].img)
         for Trank in train_ranks:
             diff_img = cv2.absdiff(qCard.rank_img, Trank.img)
             rank_diff = int(np.sum(diff_img) / 255)
             if rank_diff < best_rank_match_diff:
                 best_rank_match_diff = rank_diff
-                best_rank_match_name = Trank.name
+                best_rank_name = Trank.name
 
-    if len(qCard.suit_img) != 0:
         for Tsuit in train_suits:
             diff_img = cv2.absdiff(qCard.suit_img, Tsuit.img)
             suit_diff = int(np.sum(diff_img) / 255)
             if suit_diff < best_suit_match_diff:
                 best_suit_match_diff = suit_diff
-                best_suit_match_name = Tsuit.name
+                best_suit_name = Tsuit.name
 
-    qCard.best_rank_match = best_rank_match_name
-    qCard.best_suit_match = best_suit_match_name
-    qCard.rank_diff = best_rank_match_diff
-    qCard.suit_diff = best_suit_match_diff
+        # Only consider matches below a certain difference threshold  
+        if best_rank_match_diff < RANK_DIFF_MAX:
+            best_rank_match_name = best_rank_name
+        if best_suit_match_diff < SUIT_DIFF_MAX:
+            best_suit_match_name = best_suit_name
 
-    return qCard
+    return best_rank_match_name, best_suit_match_name, best_rank_match_diff, best_suit_match_diff
 
 def draw_results(image, qCard):
     x = qCard.center[0]
     y = qCard.center[1]
-    # cv2.putText(image, qCard.best_rank_match, (x - 60, y + 20), font, 0.5, (255, 0, 0), 2, cv2.LINE_AA)
-    # cv2.putText(image, qCard.best_suit_match, (x - 60, y + 40), font, 0.5, (255, 0, 0), 2, cv2.LINE_AA)
     cv2.putText(image, (qCard.best_rank_match+" of"), (x-60, y-10), font, 0.7, (0,255,0), 2, cv2.LINE_AA)
     cv2.putText(image, qCard.best_suit_match, (x-60, y+20), font, 0.7, (0,255,0), 2, cv2.LINE_AA)
     return image
 
-# def match_card(qCard, train_ranks, train_suits):
-#     best_rank_match_diff = 10000
-#     best_suit_match_diff = 10000
-#     best_rank_match_name = "Unknown"
-#     best_suit_match_name = "Unknown"
-#     for Trank in train_ranks:
-#         diff_img = cv2.absdiff(qCard.rank_img, Trank.img)
-#         rank_diff = int(np.sum(diff_img) / 255)
-#         if rank_diff < best_rank_match_diff:
-#             best_rank_match_diff = rank_diff
-#             best_rank_match_name = Trank.name
-#
-#     for Tsuit in train_suits:
-#         diff_img = cv2.absdiff(qCard.suit_img, Tsuit.img)
-#         suit_diff = int(np.sum(diff_img) / 255)
-#         if suit_diff < best_suit_match_diff:
-#             best_suit_match_diff = suit_diff
-#             best_suit_match_name = Tsuit.name
-#
-#     qCard.best_rank_match = best_rank_match_name
-#     qCard.best_suit_match = best_suit_match_name
-#     qCard.rank_diff = best_rank_match_diff
-#     qCard.suit_diff = best_suit_match_diff
-#
-#     return qCard
-
-# def print_results(qCard, image):
-#     rank_name = qCard.best_rank_match
-#     suit_name = qCard.best_suit_match
-#     rank_diff = qCard.rank_diff
-#     suit_diff = qCard.suit_diff
-#
-#     if rank_diff < RANK_DIFF_MAX:
-#         rank_name = rank_name + " " + str(rank_diff)
-#         cv2.putText(image, rank_name, (qCard.center[0] - 60, qCard.center[1] + 20), font, 0.5, (255, 0, 0), 2, cv2.LINE_AA)
-#
-#     if suit_diff < SUIT_DIFF_MAX:
-#         suit_name = suit_name + " " + str(suit_diff)
-#         cv2.putText(image, suit_name, (qCard.center[0] - 60, qCard.center[1] + 40), font, 0.5, (255, 0, 0), 2, cv2.LINE_AA)
-#
-#     return image
-
 def find_card_dimensions(corner_pts):
-    # width = np.linalg.norm(corner_pts[1] - corner_pts[0])
-    # height = np.linalg.norm(corner_pts[2] - corner_pts[1])
     width = np.sqrt(((corner_pts[0][0][0] - corner_pts[1][0][0])**2) + ((corner_pts[0][0][1] - corner_pts[1][0][1])**2))
     height = np.sqrt(((corner_pts[0][0][0] - corner_pts[3][0][0])**2) + ((corner_pts[0][0][1] - corner_pts[3][0][1])**2))
     return int(width), int(height)

@@ -9,13 +9,13 @@ import cards
 
 # ESP32-CAM URL
 CAM_URL = "http://192.168.100.124/cam-hi.jpg"  # Change to your ESP32-CAM IP
+# CAM_URL = "http://192.168.137.186/cam-hi.jpg"  # school
 
 # Function to capture image from ESP32-CAM
 def capture_image(url):
     response = requests.get(url)
     img = Image.open(BytesIO(response.content))
     img = np.array(img)
-    # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     return img
 
 # Load the ranks and suits
@@ -50,15 +50,13 @@ while True:
             if (cnt_is_card[i] == 1):
                 # preprocess card
                 cards_list.append(cards.preprocess_card(cnts_sort[i], image))
-                print("Card detected")
 
                 # find best rank and suit matches
-                # cards_list[k].best_rank_match, cards_list[k].best_suit_match, cards_list[k].rank_diff, cards_list[k].suit_diff = cards.match_card(cards_list[k], train_ranks, train_suits)
+                cards_list[k].best_rank_match, cards_list[k].best_suit_match, cards_list[k].rank_diff, cards_list[k].suit_diff = cards.match_card(cards_list[k], train_ranks, train_suits)
 
                 # draw center point and match result on the card
                 image = cards.draw_results(image, cards_list[k])
                 k += 1
-                print("Card: ", k)
 
         # Draw card contours on the image
         if (len(cards_list) != 0):
@@ -67,6 +65,9 @@ while True:
                 temp_cnts.append(cards_list[i].contour)
             cv2.drawContours(image, temp_cnts, -1, (255, 0, 0), 2)
 
+    # Limit the framerate
+    while (cv2.getTickCount() - t1 < 0.1 * freq):
+        pass
     # Calculate framerate
     cv2.putText(image, "FPS: {0:.2f}".format(cv2.getTickFrequency() / (cv2.getTickCount() - t1)), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
