@@ -77,32 +77,34 @@ for Name in ['Ace','Two','Three','Four','Five','Six','Seven','Eight',
     warp = cards.flattener(image, pts, w, h)
 
     # Grab corner of card image, zoom, and threshold
-    corner = warp[0:84, 0:54]
+    corner = warp[0:160, 0:64]
     corner_zoom = cv2.resize(corner, (0, 0), fx=2.5, fy=2.5)
     corner_blur = cv2.GaussianBlur(corner_zoom, (5, 5), 0)
     retval, corner_thresh = cv2.threshold(corner_blur, 155, 255, cv2.THRESH_BINARY_INV)
 
-    # Isolate suit or rank
-    if i <= 13:  # Isolate rank
-        rank = corner_thresh[20:340, 0:220]  # Grabs portion of image that shows rank
-        rank = cv2.cvtColor(rank, cv2.COLOR_BGR2GRAY)
-        rank_cnts, hier = cv2.findContours(rank, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        rank_cnts = sorted(rank_cnts, key=cv2.contourArea, reverse=True)
-        x, y, w, h = cv2.boundingRect(rank_cnts[0])
-        rank_roi = rank[y:y + h, x:x + w]
-        rank_sized = cv2.resize(rank_roi, (RANK_WIDTH, RANK_HEIGHT), 0, 0)
-        final_img = rank_sized
+    # DEBUG: Show corner_thresh image
+    cv2.imshow("Corner", corner_thresh)
 
-    # if i > 13:  # Isolate suit
-    #     suit = corner_thresh[350:640, 0:280]  # Grabs portion of image that shows suit
-    #     suit = cv2.cvtColor(suit, cv2.COLOR_BGR2GRAY)
-    #     suit = cv2.cvtColor(suit, cv2.COLOR_BGR2GRAY)
-    #     suit_cnts, hier = cv2.findContours(suit, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    #     suit_cnts = sorted(suit_cnts, key=cv2.contourArea, reverse=True)
-    #     x, y, w, h = cv2.boundingRect(suit_cnts[0])
-    #     suit_roi = suit[y:y + h, x:x + w]
-    #     suit_sized = cv2.resize(suit_roi, (SUIT_WIDTH, SUIT_HEIGHT), 0, 0)
-    #     final_img = suit_sized
+    # Isolate suit or rank
+    # if i <= 13:  # Isolate rank
+    #     rank = corner_thresh[20:215, 0:130]  # Grabs portion of image that shows rank
+    #     rank = cv2.cvtColor(rank, cv2.COLOR_BGR2GRAY)
+    #     rank_cnts, hier = cv2.findContours(rank, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    #     rank_cnts = sorted(rank_cnts, key=cv2.contourArea, reverse=True)
+    #     x, y, w, h = cv2.boundingRect(rank_cnts[0])
+    #     rank_roi = rank[y:y + h, x:x + w]
+    #     rank_sized = cv2.resize(rank_roi, (RANK_WIDTH, RANK_HEIGHT), 0, 0)
+    #     final_img = rank_sized
+
+    if i <= 13:  # Isolate suit
+        suit = corner_thresh[225:470, 0:152]  # Grabs portion of image that shows suit
+        suit = cv2.cvtColor(suit, cv2.COLOR_BGR2GRAY)
+        suit_cnts, hier = cv2.findContours(suit, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        suit_cnts = sorted(suit_cnts, key=cv2.contourArea, reverse=True)
+        x, y, w, h = cv2.boundingRect(suit_cnts[0])
+        suit_roi = suit[y:y + h, x:x + w]
+        suit_sized = cv2.resize(suit_roi, (SUIT_WIDTH, SUIT_HEIGHT), 0, 0)
+        final_img = suit_sized
 
     cv2.imshow("Image", final_img)
 

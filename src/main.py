@@ -9,6 +9,7 @@ import cards
 
 # ESP32-CAM URL
 CAM_URL = "http://192.168.100.124/cam-hi.jpg"  # Change to your ESP32-CAM IP
+# CAM_URL = "http://192.168.137.186/cam-hi.jpg"  # school
 
 # Function to capture image from ESP32-CAM
 def capture_image(url):
