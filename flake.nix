@@ -22,9 +22,24 @@
           packages = with pkgs; [ python311 ] ++
             (with pkgs.python311Packages; [ 
               pip
+              gitpython
+              matplotlib
+              numpy
               (opencv4.override {enableGtk3 = true;})
-              requests
               pillow
+              psutil
+              pyyaml
+              requests
+              scipy
+              # thop
+              torch
+              torchvision
+              tqdm
+              # ultralytics
+              pandas
+              seaborn
+              setuptools
+
               zlib
               libGL
               glib

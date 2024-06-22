@@ -1,2 +1,8 @@
 venv/
 arduino/
+axioma/
+data/
+
+data/dtd
+data/output
+data/dtd*.tar.gz

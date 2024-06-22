@@ -1,40 +1,64 @@
-with import <nixpkgs> {};
-(
+{pkgs ? import <nixpkgs> {}}: let
+  amdgpuVersions = {
+    gfx1030 = "10.3.0";
+    gfx900 = "9.0.0";
+    gfx906 = "9.0.6";
+    gfx908 = "9.0.8";
+    gfx90a = "9.0.a";
+  };
+  libs = pkgs.lib.makeLibraryPath (with pkgs; [
+    rocmPackages.rocm-runtime
+    rocm-opencl-runtime
+    rocmPackages.rocm-comgr
+    rocmPackages.rocm-smi
+    # rocmPackages.miopengemm
+    rocmPackages.rocblas
+    ncurses
+    sqlite
+    libelf
+    libdrm
+    numactl
+    rocmPackages.rocrand
+    rocmPackages.hipfft
+    rocmPackages.miopen
+    rocmPackages.clr
+    rocmPackages.rccl
+    # llvmPackages_rocm.libunwind
+    rocmPackages.llvm
+    stdenv.cc.cc.lib
+    #   (pkgs.cudaPackages)
+    #   cudatoolkit
+    #   cudnn
+  ]);
 
-let python =
-    let
-    packageOverrides = self:
-    super: {
-      opencv4 = super.opencv4.override {
-        enableGtk2 = true;
-        gtk2 = pkgs.gtk2;
-        enableFfmpeg = true; #here is how to add ffmpeg and other compilation flags
-        };
-    };
-    in
-      pkgs.python38.override {inherit packageOverrides; self = python;};
-
+  python = pkgs.python310.override {
+    packageOverrides = import ./python_overlay.nix;
+  };
 in
+  pkgs.mkShell {
+    name = "dev-env";
 
-stdenv.mkDerivation {
-  name = "impurePythonEnv";
-  buildInputs = [
-    imagemagick
-    v4l-utils
-    (python38.buildEnv.override {
-      extraLibs = [
-	pkgs.python38Packages.matplotlib
-	pkgs.python38Packages.numpy
-	pkgs.python38Packages.scipy
-	pkgs.python38Packages.gnureadline        
-        python.pkgs.opencv4
-      ];
-      ignoreCollisions = true;
-    })
-  ];
-  shellHook = ''
-        # set SOURCE_DATE_EPOCH so that we can use python wheels
-        SOURCE_DATE_EPOCH=$(date +%s)
-        export LANG=en_US.UTF-8	
-  '';
-})
+    env = {
+      LD_LIBRARY_PATH = libs;
+      # CUDA_PATH = pkgs.cudaPackages.cudatoolkit;
+      # CUDNN_PATH = pkgs.cudaPackages.cudnn;
+      OCL_ICD_VENDORS = "${pkgs.rocm-opencl-icd}/etc/OpenCL/vendors/";
+      HSA_OVERRIDE_GFX_VERSION = amdgpuVersions.gfx1030;
+    };
+
+    buildInputs = [
+      (
+        python.buildEnv.override {
+          extraLibs = with python.pkgs; [
+            virtualenv
+            tensorflow-rocm
+          ];
+          ignoreCollisions = true;
+        }
+      )
+    ];
+
+    shellHook = ''
+      exec fish
+    '';
+  }
