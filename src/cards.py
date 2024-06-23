@@ -82,8 +82,8 @@ def preprocess_image(image):
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     img_w, img_h = np.shape(image)[:2]
     bkg_level = blur[int(img_h / 100)][int(img_w / 2)]
-    thresh_level = bkg_level + BKG_THRESH # Threshold level to binary threshold the image
-    retval, thresh = cv2.threshold(blur, thresh_level, 255, cv2.THRESH_BINARY)
+    # thresh_level = bkg_level + BKG_THRESH # Threshold level to binary threshold the image
+    retval, thresh = cv2.threshold(blur, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 255, cv2.THRESH_BINARY)
 
     return thresh
 
