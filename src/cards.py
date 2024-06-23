@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 
 # Adaptive threshold levels
-BKG_THRESH = 60
-CARD_THRESH = 80
+BKG_THRESH = 75
+CARD_THRESH = 45
 
 # Width and height of card corner, where rank and suit are
 CORNER_WIDTH = 64
@@ -61,7 +61,6 @@ def load_ranks(filepath):
         train_ranks[i].img = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
         i += 1
 
-    print("Ranks loaded")
     return train_ranks
 
 def load_suits(filepath):
@@ -92,6 +91,7 @@ def preprocess_image(image):
 def find_cards(thresh_image):
     cnts, hier = cv2.findContours(thresh_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     index_sort = sorted(range(len(cnts)), key=lambda i: cv2.contourArea(cnts[i]), reverse=True)
+
     if len(cnts) == 0:
         return [], []
 
@@ -108,8 +108,7 @@ def find_cards(thresh_image):
         peri = cv2.arcLength(cnts_sort[i], True)
         approx = cv2.approxPolyDP(cnts_sort[i], 0.01 * peri, True)
 
-        if ((size < CARD_MAX_AREA) and (size > CARD_MIN_AREA)
-            and (hier_sort[i][3] == -1) and (len(approx) == 4)):
+        if ((size < CARD_MAX_AREA) and (size > CARD_MIN_AREA) and (hier_sort[i][3] == -1) and (len(approx) == 4)):
             cnt_is_card[i] = 1
 
     return cnts_sort, cnt_is_card
@@ -117,53 +116,52 @@ def find_cards(thresh_image):
 def preprocess_card(contour, image):
     qCard = Query_card()
     qCard.contour = contour
-
     peri = cv2.arcLength(contour, True)
     approx = cv2.approxPolyDP(contour, 0.01 * peri, True)
+
     pts = np.float32(approx)
-    qCard.corner_pts = pts
+    s = pts.sum(axis=2)
+    tl = pts[np.argmin(s)]
+    br = pts[np.argmax(s)]
+    diff = np.diff(pts, axis=-1)
+    tr = pts[np.argmin(diff)]
+    bl = pts[np.argmax(diff)]
 
-    # Find width and height of card's bounding rectangle
-    x,y,w,h = cv2.boundingRect(contour)
-    qCard.width, qCard.height = w, h
+    if tl[0][0] > 10:
+        qCard.corner_pts = [tl, tr, br, bl]
 
-    # Find center point of card by taking x and y average of the 4 corner points
-    average = np.sum(pts, axis=0)/len(pts)
-    cent_x = int(average[0][0])
-    cent_y = int(average[0][1])
-    qCard.center = [cent_x, cent_y]
+    qCard.width, qCard.height = find_card_dimensions(qCard.corner_pts)
 
-    # Warp card into 200x300 flattened image
-    qCard.warp = flattener(image, pts, w, h)
+    qCard.center = find_card_center(qCard.corner_pts)
+
+    qCard.warp = flattener(image, qCard.corner_pts, qCard.width, qCard.height)
 
     Qcorner = qCard.warp[0:CORNER_HEIGHT, 0:CORNER_WIDTH]
-    Qcorner_zoom = cv2.resize(Qcorner, (0, 0), fx=4, fy=4)
+    Qcorner_zoom = cv2.resize(Qcorner, (0, 0), fx=2.5, fy=2.5)
 
-    # Sample known white pixel intensity to determine good threshold level
     white_level = Qcorner_zoom[15,int((CORNER_WIDTH*4)/2)]
     thresh_level = white_level - CARD_THRESH
     if isinstance(thresh_level, np.ndarray):
         thresh_level = thresh_level[0]
     if thresh_level <= 0:
         thresh_level = 1
-    # print("thresh_level: ", thresh_level)
 
+    # Convert to grayscale
     gray_corner = cv2.cvtColor(Qcorner_zoom, cv2.COLOR_BGR2GRAY)
+    # remove noise
     blur_corner = cv2.GaussianBlur(gray_corner, (5, 5), 0)
+    # apply binary threshold
     retval, thresh_corner = cv2.threshold(blur_corner, thresh_level, 255, cv2.THRESH_BINARY)
 
-    Qrank_roi = thresh_corner[20:340, 20:220]
-    Qsuit_roi = thresh_corner[350:640, 20:280]
+    Qrank_roi = thresh_corner[5:155, 10:105] # [y1:y2, x1:x2]
+    Qsuit_roi = thresh_corner[176:305, 10:105]
     Qrank_cnts, hier = cv2.findContours(Qrank_roi, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     Qrank_cnts = sorted(Qrank_cnts, key=cv2.contourArea, reverse=True)
 
-    cv2.imshow("Rank", Qrank_roi)
-
     if len(Qrank_cnts) != 0:
-        x,y,w,h = cv2.boundingRect(Qrank_cnts[0])
-        Qrank = Qrank_roi[y:y+h, x:x+w]
-        Qrank = cv2.resize(Qrank, (RANK_WIDTH, RANK_HEIGHT), 0, 0)
-        qCard.rank_img = Qrank
+        x, y, w, h = cv2.boundingRect(Qrank_cnts[0])
+        Qrank = Qrank_roi[y:y + h, x:x + w]
+        qCard.rank_img = cv2.resize(Qrank, (RANK_WIDTH, RANK_HEIGHT), 0, 0)
 
     Qsuit_cnts, hier = cv2.findContours(Qsuit_roi, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     Qsuit_cnts = sorted(Qsuit_cnts, key=cv2.contourArea, reverse=True)
@@ -172,46 +170,36 @@ def preprocess_card(contour, image):
         Qsuit = Qsuit_roi[y:y + h, x:x + w]
         qCard.suit_img = cv2.resize(Qsuit, (SUIT_WIDTH, SUIT_HEIGHT), 0, 0)
 
-    # DEBUG:
-    # cv2.imshow("Suit", Qsuit)
-
     return qCard
 
 # Function to call the match_card function for each card in the image
+# returns the best rank and suit match for the image
 def match_card(qCard, train_ranks, train_suits):
-    best_rank_match_diff = 10000
-    best_suit_match_diff = 10000
     best_rank_match_name = "Unknown"
     best_suit_match_name = "Unknown"
-
-    # Invert colors (white card, black symbols)
-    qCard.rank_img = cv2.bitwise_not(qCard.rank_img)
-    qCard.suit_img = cv2.bitwise_not(qCard.suit_img)
+    best_rank_match_diff = 10000
+    best_suit_match_diff = 10000
 
     if (len(qCard.rank_img) != 0) and (len(qCard.suit_img) != 0):
         for Trank in train_ranks:
-            diff_img = cv2.absdiff(qCard.rank_img, Trank.img)
-            rank_diff = int(np.sum(diff_img) / 255)
-            print("Rank match: ", Trank.name, "diff: ", rank_diff)
-            if rank_diff < best_rank_match_diff:
-                best_rank_match_diff = rank_diff
-                best_rank_name = Trank.name
-                print("****Best rank match: ", best_rank_name)
+            rank_diff = cv2.matchTemplate(qCard.rank_img, Trank.img, cv2.TM_CCOEFF_NORMED)
+            min_val, rank_val, min_loc, rank_loc = cv2.minMaxLoc(rank_diff)
+
+            if rank_val < best_rank_match_diff:
+                best_rank_match_diff = rank_val
+                best_rank_match_name = Trank.name
 
         for Tsuit in train_suits:
-            diff_img = cv2.absdiff(qCard.suit_img, Tsuit.img)
-            suit_diff = int(np.sum(diff_img) / 255)
-            # DEBUG:
-            print("Suit match: ", Tsuit.name, "diff: ", suit_diff)
-            if suit_diff < best_suit_match_diff:
-                best_suit_match_diff = suit_diff
-                best_suit_name = Tsuit.name
+            suit_diff = cv2.matchTemplate(qCard.suit_img, Tsuit.img, cv2.TM_CCOEFF_NORMED)
+            min_val, suit_val, min_loc, suit_loc = cv2.minMaxLoc(suit_diff)
+            if suit_val < best_suit_match_diff:
+                best_suit_match_diff = suit_val
+                best_suit_match_name = Tsuit.name
 
-        # Only consider matches below a certain difference threshold  
-        if best_rank_match_diff < RANK_DIFF_MAX:
-            best_rank_match_name = best_rank_name
-        if best_suit_match_diff < SUIT_DIFF_MAX:
-            best_suit_match_name = best_suit_name
+        if best_rank_match_diff > 0.5:
+            best_rank_match_name = "Unknown"
+        if best_suit_match_diff > 0.5:
+            best_suit_match_name = "Unknown"
 
     return best_rank_match_name, best_suit_match_name, best_rank_match_diff, best_suit_match_diff
 

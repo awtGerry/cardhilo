@@ -65,7 +65,7 @@ while True:
             cv2.drawContours(image, temp_cnts, -1, (255, 0, 0), 2)
 
     # Limit the framerate
-    while (cv2.getTickCount() - t1 < 0.1 * freq):
+    while (cv2.getTickCount() - t1 < 0.1 * freq): # fps: 10
         pass
     # Calculate framerate
     cv2.putText(image, "FPS: {0:.2f}".format(cv2.getTickFrequency() / (cv2.getTickCount() - t1)), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
